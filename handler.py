@@ -12,20 +12,28 @@ import tempfile
 import torch
 
 print("Carregando modelo XTTS v2...")
+
 tts = TTS(
-    model_name="tts_models/multilingual/multi-dataset/xtts_v2",
-    gpu=True
+    model_name="tts_models/multilingual/multi-dataset/xtts_v2"
 )
-print("Modelo carregado!")
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+tts.to(device)
+
+print(f"Modelo carregado em {device}!")
 
 def handler(event):
     data = event["input"]
+
+    if "speaker_wav_base64" not in data:
+        return {"error": "speaker_wav_base64 é obrigatório"}
 
     text = data["text"]
     language = data.get("language", "en")
     speaker_b64 = data["speaker_wav_base64"]
 
     speaker_bytes = base64.b64decode(speaker_b64)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
         f.write(speaker_bytes)
         speaker_path = f.name
@@ -44,8 +52,6 @@ def handler(event):
 
     os.remove(speaker_path)
     os.remove(out_path)
-
-    torch.cuda.empty_cache()
 
     return {"audio_base64": audio_b64}
 
