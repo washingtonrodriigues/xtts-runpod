@@ -62,7 +62,7 @@ RUN pip install --no-cache-dir TTS==0.22.0
 RUN pip cache purge
 
 # Copiar código da aplicação
-COPY handler.optimized.py handler.py
+COPY handler.py
 
 # Criar diretório temporário para processamento
 RUN mkdir -p /tmp/tts_temp
