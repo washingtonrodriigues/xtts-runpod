@@ -22,11 +22,11 @@ WORKDIR /app
 RUN mkdir -p /app/models /tmp/tts_cache
 
 # Copiar requirements primeiro para cache do Docker
-COPY requirements-serverless.txt .
+COPY requirements.txt .
 
 # Instalar dependências Python com otimizações para serverless
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements-serverless.txt \
+    && pip install --no-cache-dir -r requirements.txt \
     && pip cache purge
 
 # Copiar código da aplicação
