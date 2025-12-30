@@ -34,6 +34,17 @@ def log(message: str):
     sys.stdout.flush()
 
 
+def get_device():
+    """Detecta se GPU está disponível"""
+    import torch
+    if torch.cuda.is_available():
+        log("GPU detectada, usando CUDA")
+        return "cuda"
+    else:
+        log("GPU não disponível, usando CPU")
+        return "cpu"
+
+
 def preload_model():
     """Pré-carrega o modelo durante a inicialização"""
     global tts_model, model_loading
@@ -48,9 +59,10 @@ def preload_model():
     
     model_loading = True
     try:
-        log("Pré-carregando modelo XTTS-v2...")
-        tts_model = TTS(model_name=MODEL_NAME).to("cpu")
-        log("Modelo pré-carregado com sucesso!")
+        device = get_device()
+        log(f"Pré-carregando modelo XTTS-v2 em {device}...")
+        tts_model = TTS(model_name=MODEL_NAME, gpu=False).to(device)
+        log(f"Modelo pré-carregado com sucesso em {device}!")
         return True
     except Exception as e:
         log(f"Erro ao pré-carregar modelo: {e}")
@@ -77,9 +89,10 @@ def get_tts_model():
         return tts_model
     
     try:
-        log("Carregando modelo XTTS-v2 na memória...")
-        tts_model = TTS(model_name=MODEL_NAME).to("cpu")
-        log("Modelo carregado com sucesso!")
+        device = get_device()
+        log(f"Carregando modelo XTTS-v2 em {device}...")
+        tts_model = TTS(model_name=MODEL_NAME, gpu=False).to(device)
+        log(f"Modelo carregado com sucesso em {device}!")
         return tts_model
     except Exception as e:
         log(f"Erro ao carregar modelo: {e}")
