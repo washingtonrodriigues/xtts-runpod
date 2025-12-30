@@ -62,10 +62,15 @@ RUN pip install --no-cache-dir TTS==0.22.0
 RUN pip cache purge
 
 # Copiar código da aplicação
-COPY handler.py .
+COPY handler.optimized.py handler.py
 
 # Criar diretório temporário para processamento
 RUN mkdir -p /tmp/tts_temp
+
+# PRÉ-BAIXAR O MODELO DURANTE O BUILD
+RUN echo "Pré-baixando modelo XTTS-v2 durante o build..." && \
+    python -c "from TTS.api import TTS; print('Iniciando download do modelo...'); TTS(model_name='tts_models/multilingual/multi-dataset/xtts_v2'); print('Download concluído!')" && \
+    echo "Modelo XTTS-v2 pré-baixado com sucesso!"
 
 # Expor porta (não estritamente necessário para serverless, mas mantido para compatibilidade)
 EXPOSE 8000
