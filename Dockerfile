@@ -1,7 +1,7 @@
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
 # ===============================
-# Variáveis de ambiente
+# Ambiente
 # ===============================
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
@@ -39,21 +39,11 @@ RUN pip install \
     torchvision==0.17.2+cu118 \
     --extra-index-url https://download.pytorch.org/whl/cu118
 
-# RunPod + TTS
+# Coqui + RunPod
 RUN pip install \
     runpod \
     TTS \
     soundfile
-
-# ===============================
-# Preload do modelo (SEM GPU)
-# ===============================
-RUN python - <<EOF
-from TTS.api import TTS
-print("Baixando XTTS v2...")
-TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2", gpu=False)
-print("Download concluído")
-EOF
 
 # ===============================
 # Código
