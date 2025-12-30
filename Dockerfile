@@ -3,7 +3,7 @@ FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# 🔑 LICENÇA COQUI (TEM QUE ESTAR AQUI)
+# 🔑 Licença Coqui (TEM que estar no build)
 ENV COQUI_TOS_AGREED=1
 ENV COQUI_COMMERCIAL_LICENSE=0
 
@@ -16,6 +16,11 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     git \
     ffmpeg \
+    sox \
+    espeak-ng \
+    libgl1 \
+    libglib2.0-0 \
+    libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN ln -s /usr/bin/python3.10 /usr/bin/python
@@ -32,7 +37,7 @@ RUN pip install \
     torchvision==0.17.2+cu118 \
     --extra-index-url https://download.pytorch.org/whl/cu118
 
-# 🔥 DOWNLOAD DO MODELO NO BUILD (SEM GPU)
+# 🔥 Download do modelo NO BUILD (CPU)
 RUN python - <<EOF
 import os
 os.environ["COQUI_TOS_AGREED"] = "1"
