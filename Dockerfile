@@ -30,8 +30,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Instalar PyTorch CPU primeiro (versão mais estável)
 RUN pip install --no-cache-dir torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 \
-    --index-url https://download.pytorch.org/whl/cpu \
-    --no-deps
+    --index-url https://download.pytorch.org/whl/cpu
 
 # Copiar requirements
 COPY requirements.txt .
@@ -67,9 +66,9 @@ COPY handler.py .
 # Criar diretório temporário para processamento
 RUN mkdir -p /tmp/tts_temp
 
-# PRÉ-BAIXAR O MODELO DURANTE O BUILD
+# PRÉ-BAIXAR O MODELO DURANTE O BUILD (sem tentar usar GPU)
 RUN echo "Pré-baixando modelo XTTS-v2 durante o build..." && \
-    python -c "from TTS.api import TTS; print('Iniciando download do modelo...'); TTS(model_name='tts_models/multilingual/multi-dataset/xtts_v2'); print('Download concluído!')" && \
+    python -c "from TTS.api import TTS; import torch; print('Iniciando download do modelo...'); print(f'CUDA disponível: {torch.cuda.is_available()}'); tts = TTS(model_name='tts_models/multilingual/multi-dataset/xtts_v2', gpu=False); print('Download concluído!')" && \
     echo "Modelo XTTS-v2 pré-baixado com sucesso!"
 
 # Expor porta (não estritamente necessário para serverless, mas mantido para compatibilidade)
