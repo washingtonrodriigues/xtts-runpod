@@ -1,57 +1,45 @@
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+FROM python:3.10-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-
-# 🔑 Licença Coqui (TEM que estar no build)
+# Configurar variáveis de ambiente para o TTS
 ENV COQUI_TOS_AGREED=1
 ENV COQUI_COMMERCIAL_LICENSE=0
+ENV PYTHONUNBUFFERED=1
 
-# performance
-ENV OMP_NUM_THREADS=1
-ENV MKL_NUM_THREADS=1
-
+# Instalar dependências do sistema
 RUN apt-get update && apt-get install -y \
-    python3.10 \
-    python3-pip \
-    git \
     ffmpeg \
-    sox \
-    espeak-ng \
-    libgl1 \
-    libglib2.0-0 \
     libsndfile1 \
-    && rm -rf /var/lib/apt/lists/*
+    curl \
+    wget \
+    git \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-RUN ln -s /usr/bin/python3.10 /usr/bin/python
-
+# Criar diretório da aplicação
 WORKDIR /app
 
-RUN pip install --upgrade pip
+# Criar diretório para cache do modelo
+RUN mkdir -p /app/models /tmp/tts_cache
 
-RUN pip install \
-    runpod \
-    TTS \
-    torch==2.2.2+cu118 \
-    torchaudio==2.2.2+cu118 \
-    torchvision==0.17.2+cu118 \
-    --extra-index-url https://download.pytorch.org/whl/cu118
+# Copiar requirements primeiro para cache do Docker
+COPY requirements-serverless.txt .
 
-# 🔥 Download do modelo NO BUILD (CPU)
-RUN python - <<EOF
-import os
-os.environ["COQUI_TOS_AGREED"] = "1"
-os.environ["COQUI_COMMERCIAL_LICENSE"] = "0"
+# Instalar dependências Python com otimizações para serverless
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements-serverless.txt \
+    && pip cache purge
 
-from TTS.api import TTS
-print("Baixando XTTS v2...")
-TTS(
-    model_name="tts_models/multilingual/multi-dataset/xtts_v2",
-    gpu=False
-)
-print("Download concluído")
-EOF
-
+# Copiar código da aplicação
 COPY handler.py .
 
+# Copiar arquivo de voz de referência padrão se existir
+COPY female_voice.opus* ./ 2>/dev/null || true
+
+# Criar diretório temporário para processamento
+RUN mkdir -p /tmp/tts_temp
+
+# Expor porta (não estritamente necessário para serverless, mas mantido para compatibilidade)
+EXPOSE 8000
+
+# Comando para executar o handler
 CMD ["python", "handler.py"]
