@@ -33,26 +33,26 @@ def log(message: str):
     sys.stdout.flush()
 
 
-def ensure_model_downloaded():
-    """Garante que o modelo esteja baixado"""
-    global model_loading
-    
-    if os.path.exists(MODEL_PATH):
-        log("Modelo XTTS-v2 já existe. Pulando download.")
-        return True
+def preload_model():
+    """Pré-carrega o modelo durante a inicialização"""
+    global tts_model, model_loading
     
     if model_loading:
-        log("Modelo já está sendo baixado por outro processo...")
+        log("Modelo já está sendo carregado...")
         return False
+    
+    if tts_model is not None:
+        log("Modelo já está em memória.")
+        return True
     
     model_loading = True
     try:
-        log("Baixando modelo XTTS-v2 pela primeira vez...")
-        TTS(model_name=MODEL_NAME)
-        log("Download concluído!")
+        log("Pré-carregando modelo XTTS-v2...")
+        tts_model = TTS(model_name=MODEL_NAME).to("cpu")
+        log("Modelo pré-carregado com sucesso!")
         return True
     except Exception as e:
-        log(f"Erro ao baixar modelo: {e}")
+        log(f"Erro ao pré-carregar modelo: {e}")
         return False
     finally:
         model_loading = False
@@ -66,7 +66,7 @@ def get_tts_model():
         return tts_model
     
     # Esperar se o modelo está sendo carregado
-    max_wait = 300  # 5 minutos
+    max_wait = 60  # 1 minuto (reduzido)
     wait_time = 0
     while model_loading and wait_time < max_wait:
         time.sleep(1)
@@ -104,8 +104,8 @@ def cleanup_temp_files():
         
         for file_path in temp_path.glob("*"):
             if file_path.is_file():
-                # Remover arquivos com mais de 1 hora
-                if current_time - file_path.stat().st_mtime > 3600:
+                # Remover arquivos com mais de 10 minutos (reduzido)
+                if current_time - file_path.stat().st_mtime > 600:
                     try:
                         file_path.unlink()
                         log(f"Removido arquivo temporário antigo: {file_path}")
@@ -135,7 +135,7 @@ def process_tts_request(job: Dict[str, Any]) -> Dict[str, Any]:
         # Limpar arquivos temporários antigos
         cleanup_temp_files()
         
-        # Obter modelo TTS
+        # Obter modelo TTS (já deve estar pré-carregado)
         tts = get_tts_model()
         
         # Processar arquivo de referência de voz
@@ -151,17 +151,12 @@ def process_tts_request(job: Dict[str, Any]) -> Dict[str, Any]:
                     "status_code": 400
                 }
         else:
-            # Usar arquivo padrão se existir
-            default_file = "/app/female_voice.opus"
-            if not os.path.exists(default_file):
-                default_file = "female_voice.opus"
-            
-            if not os.path.exists(default_file):
-                return {
-                    "error": "Nenhum arquivo de voz padrão encontrado",
-                    "status_code": 400
-                }
-            speaker_path = default_file
+            # Retornar erro se não tiver voz padrão (evitar problemas)
+            return {
+                "error": "speaker_wav_base64 é obrigatório para esta implementação serverless",
+                "status_code": 400,
+                "suggestion": "Forneça um arquivo de áudio em base64 como referência de voz"
+            }
         
         # Gerar arquivo de saída
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False, dir=TEMP_DIR) as temp_out:
@@ -169,13 +164,16 @@ def process_tts_request(job: Dict[str, Any]) -> Dict[str, Any]:
         
         log(f"Gerando TTS em {output_path}")
         
-        # Gerar TTS
+        # Gerar TTS com timeout
+        start_time = time.time()
         tts.tts_to_file(
             text=text,
             speaker_wav=speaker_path,
             language=language,
             file_path=output_path
         )
+        generation_time = time.time() - start_time
+        log(f"TTS gerado em {generation_time:.2f}s")
         
         # Validar arquivo gerado
         if not os.path.exists(output_path):
@@ -229,7 +227,8 @@ def process_tts_request(job: Dict[str, Any]) -> Dict[str, Any]:
             "audio_base64": audio_base64,
             "filename": "tts.wav",
             "content_type": "audio/wav",
-            "status": "success"
+            "status": "success",
+            "generation_time": generation_time
         }
         
     except Exception as e:
@@ -244,13 +243,6 @@ def process_tts_request(job: Dict[str, Any]) -> Dict[str, Any]:
 def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     """Handler principal do RunPod Serverless"""
     try:
-        # Garantir que o modelo esteja disponível
-        if not ensure_model_downloaded():
-            return {
-                "error": "Não foi possível baixar o modelo TTS",
-                "status_code": 500
-            }
-        
         # Determinar o tipo de requisição
         job_input = job.get("input", {})
         endpoint = job_input.get("endpoint", "tts-v2")
@@ -276,8 +268,14 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
 if __name__ == "__main__":
     log("Iniciando handler XTTS-v2 para RunPod Serverless...")
     
-    # Pré-baixar modelo se necessário
-    ensure_model_downloaded()
+    # Verificar se modelo já existe no filesystem
+    if os.path.exists(MODEL_PATH):
+        log("Modelo XTTS-v2 encontrado no filesystem.")
+    else:
+        log("Modelo XTTS-v2 não encontrado. Será baixado na primeira requisição.")
+    
+    # Tentar pré-carregar modelo
+    preload_model()
     
     # Iniciar servidor RunPod
     runpod.serverless.start({"handler": handler})
