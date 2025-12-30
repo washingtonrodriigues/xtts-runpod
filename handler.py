@@ -1,4 +1,7 @@
 import os
+
+os.environ["COQUI_TOS_AGREED"] = "1"
+os.environ["COQUI_COMMERCIAL_LICENSE"] = "0"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
