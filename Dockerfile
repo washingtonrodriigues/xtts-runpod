@@ -64,9 +64,6 @@ RUN pip cache purge
 # Copiar código da aplicação
 COPY handler.py .
 
-# Copiar arquivo de voz de referência padrão se existir
-COPY female_voice.opus* ./ 2>/dev/null || true
-
 # Criar diretório temporário para processamento
 RUN mkdir -p /tmp/tts_temp
 
