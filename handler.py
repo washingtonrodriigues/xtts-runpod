@@ -125,7 +125,7 @@ def process_tts_request(job: Dict[str, Any]) -> Dict[str, Any]:
         language = job_input.get("language", "pt")
         speaker_wav_base64 = job_input.get("speaker_wav_base64")
         speed = float(job_input.get("speed", 1.3))
-        output_format = job_input.get("output_format", "opus")  # Novo parâmetro
+        output_format = job_input.get("output_format", "ogg")  # Alterado de opus para ogg
         
         if not text:
             return {
@@ -214,20 +214,21 @@ def process_tts_request(job: Dict[str, Any]) -> Dict[str, Any]:
                 log(f"Erro ao aplicar speed: {e}")
                 # Continuar com arquivo original se falhar
         
-        # Converter para OPUS se solicitado (melhor para WhatsApp/Telegram)
-        if output_format.lower() == "opus":
+        # Converter para OGG com codec Opus se solicitado (formato para WhatsApp)
+        if output_format.lower() == "ogg":
             try:
                 audio, sr = librosa.load(output_path, sr=None)
                 
-                # Usar bitrate mais baixo para WhatsApp/Telegram
-                with tempfile.NamedTemporaryFile(suffix=".opus", delete=False, dir=TEMP_DIR) as opus_file:
-                    opus_path = opus_file.name
+                # Gerar arquivo OGG com codec Opus para compatibilidade com WhatsApp
+                with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False, dir=TEMP_DIR) as ogg_file:
+                    ogg_path = ogg_file.name
                 
-                # Converter para OPUS com bitrate otimizado
-                sf.write(opus_path, audio, sr, format='OPUS', bitrate=24)
+                # Converter para OGG com codec Opus (formato exigido pelo WhatsApp)
+                # Usamos bitrate de 24k que é ideal para mensagens de voz
+                sf.write(ogg_path, audio, sr, format='OGG', subtype='OPUS', bitrate=24)
                 
-                # Ler arquivo OPUS e converter para base64
-                with open(opus_path, "rb") as f:
+                # Ler arquivo OGG e converter para base64
+                with open(ogg_path, "rb") as f:
                     audio_base64 = base64.b64encode(f.read()).decode('utf-8')
                 
                 # Limpar arquivos temporários
@@ -235,21 +236,26 @@ def process_tts_request(job: Dict[str, Any]) -> Dict[str, Any]:
                     os.unlink(speaker_path)
                 if os.path.exists(output_path):
                     os.unlink(output_path)
-                if os.path.exists(opus_path):
-                    os.unlink(opus_path)
+                if os.path.exists(ogg_path):
+                    os.unlink(ogg_path)
                 
+                # Retornar no formato esperado pela API do WhatsApp
                 return {
-                    "audio_base64": audio_base64,
-                    "filename": "tts.opus",
-                    "content_type": "audio/opus; codecs=opus",
+                    "file": {
+                        "mimetype": "audio/ogg; codecs=opus",
+                        "filename": "voice-message.mp3",  # Extensão .mp3 exigida pela API
+                        "data": audio_base64
+                    },
+                    "session": "Vivo",
+                    "convert": False,
                     "status": "success",
                     "generation_time": generation_time,
-                    "format": "opus",
+                    "format": "ogg_opus",
                     "size_estimate": len(audio_base64)
                 }
                 
             except Exception as e:
-                log(f"Erro ao converter para OPUS: {e}")
+                log(f"Erro ao converter para OGG com Opus: {e}")
                 # Fallback para WAV se falhar conversão
         
         # Retornar WAV como fallback ou se solicitado
@@ -296,7 +302,7 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
                         "language": "pt",
                         "speed": 1.3,
                         "speaker_wav_base64": "base64_do_audio",
-                        "output_format": "opus"  # Novo parâmetro opcional
+                        "output_format": "ogg"  # Formato OGG com codec Opus para WhatsApp
                     }
                 }
             }
