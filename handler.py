@@ -29,16 +29,36 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 tts_model = None
 model_loading = False
 
+# Helper para ler variáveis com suporte a RunPod Secrets
+def get_env(key: str, default: str = None) -> str:
+    """
+    Tenta ler variável de ambiente com suporte a RunPod Secrets.
+    RunPod adiciona prefixo 'RUNPOD_SECRET_' aos secrets.
+    """
+    # Tentar sem prefixo primeiro
+    value = os.getenv(key)
+    if value:
+        return value
+    
+    # Tentar com prefixo RunPod
+    runpod_key = f"RUNPOD_SECRET_{key}"
+    value = os.getenv(runpod_key)
+    if value:
+        return value
+    
+    return default
+
+
 # Configuração S3/MinIO
 S3_ENABLED = all([
-    os.getenv('S3_ENDPOINT'),
-    os.getenv('S3_ACCESS_KEY'),
-    os.getenv('S3_SECRET_KEY'),
-    os.getenv('S3_BUCKET')
+    get_env('S3_ENDPOINT'),
+    get_env('S3_ACCESS_KEY'),
+    get_env('S3_SECRET_KEY'),
+    get_env('S3_BUCKET')
 ])
 
 # MinIO usa URLs públicas customizadas
-MINIO_PUBLIC_URL = os.getenv('MINIO_PUBLIC_URL')  # Ex: https://minio.yourdomain.com
+MINIO_PUBLIC_URL = get_env('MINIO_PUBLIC_URL')  # Ex: https://minio.yourdomain.com
 
 s3_client = None
 
@@ -60,10 +80,10 @@ def get_s3_client():
         try:
             # MinIO requer estas configs específicas
             s3_client = boto3.client('s3',
-                endpoint_url=os.getenv('S3_ENDPOINT'),
-                aws_access_key_id=os.getenv('S3_ACCESS_KEY'),
-                aws_secret_access_key=os.getenv('S3_SECRET_KEY'),
-                region_name=os.getenv('S3_REGION', 'us-east-1'),  # MinIO aceita qualquer region
+                endpoint_url=get_env('S3_ENDPOINT'),
+                aws_access_key_id=get_env('S3_ACCESS_KEY'),
+                aws_secret_access_key=get_env('S3_SECRET_KEY'),
+                region_name=get_env('S3_REGION', 'us-east-1'),
                 config=boto3.session.Config(
                     signature_version='s3v4',
                     s3={'addressing_style': 'path'}  # MinIO usa path-style
@@ -71,13 +91,13 @@ def get_s3_client():
             )
             
             # Testar conexão
-            s3_client.head_bucket(Bucket=os.getenv('S3_BUCKET'))
+            s3_client.head_bucket(Bucket=get_env('S3_BUCKET'))
             log("Cliente MinIO inicializado com sucesso")
             
         except Exception as e:
             log(f"Erro ao inicializar MinIO: {e}")
-            log(f"Endpoint: {os.getenv('S3_ENDPOINT')}")
-            log(f"Bucket: {os.getenv('S3_BUCKET')}")
+            log(f"Endpoint: {get_env('S3_ENDPOINT')}")
+            log(f"Bucket: {get_env('S3_BUCKET')}")
             return None
     
     return s3_client
@@ -96,8 +116,8 @@ def upload_to_s3(file_path: str, content_type: str = "audio/ogg") -> Optional[Di
             log("MinIO não configurado, usando fallback base64")
             return None
         
-        bucket = os.getenv('S3_BUCKET')
-        use_public_url = os.getenv('MINIO_USE_PUBLIC_URL', 'false').lower() == 'true'
+        bucket = get_env('S3_BUCKET')
+        use_public_url = get_env('MINIO_USE_PUBLIC_URL', 'false').lower() == 'true'
         
         # Gerar nome único com estrutura de pastas por data
         ext = os.path.splitext(file_path)[1]
@@ -133,7 +153,7 @@ def upload_to_s3(file_path: str, content_type: str = "audio/ogg") -> Optional[Di
             log(f"Upload concluído (URL pública): {filename} ({file_size} bytes)")
         else:
             # URL pré-assinada (expira em X segundos)
-            expires_in = int(os.getenv('MINIO_URL_EXPIRY', '3600'))  # Padrão: 1 hora
+            expires_in = int(get_env('MINIO_URL_EXPIRY', '3600'))  # Padrão: 1 hora
             url = client.generate_presigned_url(
                 'get_object',
                 Params={'Bucket': bucket, 'Key': filename},
@@ -486,10 +506,10 @@ if __name__ == "__main__":
     log(f"MinIO habilitado: {S3_ENABLED}")
     
     if S3_ENABLED:
-        log(f"Endpoint: {os.getenv('S3_ENDPOINT')}")
-        log(f"Bucket: {os.getenv('S3_BUCKET')}")
+        log(f"Endpoint: {get_env('S3_ENDPOINT')}")
+        log(f"Bucket: {get_env('S3_BUCKET')}")
         log(f"URL Pública: {MINIO_PUBLIC_URL or 'Não configurada (usando URLs pré-assinadas)'}")
-        log(f"Modo público: {os.getenv('MINIO_USE_PUBLIC_URL', 'false')}")
+        log(f"Modo público: {get_env('MINIO_USE_PUBLIC_URL', 'false')}")
     else:
         log("MinIO não configurado - usando Base64")
     
