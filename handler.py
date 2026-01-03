@@ -388,22 +388,79 @@ def process_tts_request(job: Dict[str, Any]) -> Dict[str, Any]:
         if not os.path.exists(output_path) or os.path.getsize(output_path) < 200:
             return {"error": "TTS falhou", "status_code": 500}
         
-        # Aplicar speed
+        # Aplicar speed usando ffmpeg (mais estável que librosa)
         processed_path = output_path
         if speed != 1.0 and abs(speed - 1.0) > 0.01:
             try:
                 log(f"Aplicando speed: {speed}x")
-                audio, sr = librosa.load(output_path, sr=None, dtype=np.float32)
-                audio_fast = librosa.effects.time_stretch(y=audio, rate=speed)
                 
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False, dir=TEMP_DIR) as speed_file:
                     speed_path = speed_file.name
                 
-                sf.write(speed_path, audio_fast, sr, subtype='PCM_16')
-                processed_path = speed_path
-                log(f"Speed aplicado: {len(audio)/sr:.2f}s → {len(audio_fast)/sr:.2f}s")
+                # Usar ffmpeg atempo filter (mais estável)
+                # atempo aceita valores entre 0.5 e 2.0
+                # Para valores fora desse range, encadear múltiplos filtros
+                
+                if 0.5 <= speed <= 2.0:
+                    # Speed normal: usar um único atempo
+                    cmd = [
+                        'ffmpeg', '-i', output_path,
+                        '-filter:a', f'atempo={speed}',
+                        '-y', speed_path
+                    ]
+                elif speed > 2.0:
+                    # Speed muito rápido: encadear filtros
+                    # Ex: 2.5x = atempo=2.0,atempo=1.25
+                    filters = []
+                    remaining = speed
+                    while remaining > 2.0:
+                        filters.append('atempo=2.0')
+                        remaining /= 2.0
+                    filters.append(f'atempo={remaining:.3f}')
+                    
+                    cmd = [
+                        'ffmpeg', '-i', output_path,
+                        '-filter:a', ','.join(filters),
+                        '-y', speed_path
+                    ]
+                else:
+                    # Speed muito lento: encadear filtros
+                    filters = []
+                    remaining = speed
+                    while remaining < 0.5:
+                        filters.append('atempo=0.5')
+                        remaining /= 0.5
+                    filters.append(f'atempo={remaining:.3f}')
+                    
+                    cmd = [
+                        'ffmpeg', '-i', output_path,
+                        '-filter:a', ','.join(filters),
+                        '-y', speed_path
+                    ]
+                
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=30
+                )
+                
+                if result.returncode == 0 and os.path.exists(speed_path) and os.path.getsize(speed_path) > 100:
+                    processed_path = speed_path
+                    
+                    # Calcular durações
+                    original_duration = get_audio_duration(output_path)
+                    new_duration = get_audio_duration(speed_path)
+                    
+                    log(f"Speed {speed}x aplicado com sucesso via ffmpeg")
+                    log(f"Duração: {original_duration:.2f}s → {new_duration:.2f}s")
+                else:
+                    log(f"Falha no ffmpeg speed, usando original")
+                    log(f"stderr: {result.stderr.decode()}")
+                    
             except Exception as e:
-                log(f"Erro no speed: {e}, usando original")
+                log(f"Erro ao aplicar speed: {e}")
+                log(f"Traceback: {traceback.format_exc()}")
+                log("Usando arquivo original")
         
         # Gerar metadados
         waveform = generate_waveform(processed_path, num_samples=waveform_samples)
